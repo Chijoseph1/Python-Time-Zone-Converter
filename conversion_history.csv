@@ -1,3 +1,2 @@
 original_time,source_zone,converted_time,target_zone,utc_offset,abbreviation
-2026-04-03 10:00 WAT,Africa/Lagos,2026-04-03 10:00 BST,Europe/London,+0100,BST
-2026-04-03 10:00 WAT,Africa/Lagos,2026-04-03 18:00 JST,Asia/Tokyo,+0900,JST
+2034-03-06 10:00 WAT,Africa/Lagos,2034-03-06 09:00 GMT,Europe/London,+0000,GMT

@@ -1,58 +1,62 @@
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import csv
-import json
-import os
 
-
-HISTORY_FILE = "conversion_history.json"
 CSV_FILE = "conversion_history.csv"
 
+# History exists only while the program is running.
+history = []
 
 def get_datetime():
     while True:
-        value = input(
-            "Enter date and time (YYYY-MM-DD HH:MM, e.g. 2026-05-04 10:00): "
+        date_time = input(
+            "Enter date and time (YYYY-MM-DD HH:MM), "
+            "e.g. 2026-10-22 14:30: "
         ).strip()
 
         try:
-            parsed_date = datetime.strptime(value, "%Y-%m-%d %H:%M")
-
-            if parsed_date.strftime("%Y-%m-%d %H:%M") != value:
-                raise ValueError
-
-            return parsed_date
-
+            return datetime.strptime(date_time, "%Y-%m-%d %H:%M")
         except ValueError:
-            print("Invalid date and time. Example: 2026-05-04 10:00.")
-
+            print(
+                "Invalid date or time. "
+                "Please use YYYY-MM-DD HH:MM."
+            )
 
 def get_timezone(prompt):
     while True:
-        name = input(
+        zone_name = input(
             f"{prompt} (e.g. Africa/Lagos or Europe/London): "
         ).strip()
 
         try:
-            return ZoneInfo(name)
-
+            return ZoneInfo(zone_name)
         except (ZoneInfoNotFoundError, ValueError):
-            print("Invalid time zone. Please try again.")
-
+            print(
+                "Invalid time-zone name. "
+            )
 
 def get_aware_datetime(date_time, zone):
     while True:
+        # Try both possible interpretations of the local time.
         first = date_time.replace(tzinfo=zone, fold=0)
         second = date_time.replace(tzinfo=zone, fold=1)
 
+        # Convert each interpretation to UTC and back.
         first_back = first.astimezone(timezone.utc).astimezone(zone)
         second_back = second.astimezone(timezone.utc).astimezone(zone)
 
-        first_valid = first_back.replace(tzinfo=None) == date_time
-        second_valid = second_back.replace(tzinfo=None) == date_time
+        first_valid = (
+            first_back.replace(tzinfo=None) == date_time
+        )
+        second_valid = (
+            second_back.replace(tzinfo=None) == date_time
+        )
 
         if not first_valid and not second_valid:
-            print("This local time does not exist because of a clock change.")
+            print(
+                f"{date_time} does not exist in {zone.key} "
+                "because of a time-zone clock change."
+            )
             date_time = get_datetime()
             continue
 
@@ -61,56 +65,24 @@ def get_aware_datetime(date_time, zone):
             and second_valid
             and first.utcoffset() != second.utcoffset()
         ):
-            print("This time occurs twice because of a clock change.")
-            print("1. First occurrence:", first.strftime("%Y-%m-%d %H:%M %Z"))
-            print("2. Second occurrence:", second.strftime("%Y-%m-%d %H:%M %Z"))
+            print(f"This time occurs twice in {zone.key}.")
+            print("1. First occurrence")
+            print("2. Second occurrence")
 
             while True:
-                choice = input("Choose an occurrence (1 or 2): ").strip()
+                choice = input("Choose 1 or 2: ").strip()
 
                 if choice == "1":
                     return first
-
-                if choice == "2":
+                elif choice == "2":
                     return second
-
-                print("Invalid choice. Please choose 1 or 2.")
+                else:
+                    print("Please enter 1 or 2.")
 
         if first_valid:
             return first
 
         return second
-
-
-def load_history():
-    if os.path.exists(HISTORY_FILE):
-        try:
-            with open(HISTORY_FILE, "r", encoding="utf-8") as file:
-                data = json.load(file)
-
-                if isinstance(data, list) and all(
-                    isinstance(item, dict) for item in data
-                ):
-                    return data
-
-                print("Saved history has an invalid format.")
-
-        except (json.JSONDecodeError, OSError):
-            print("Could not read saved history. Starting with empty history.")
-
-    return []
-
-
-history = load_history()
-
-
-def save_history():
-    try:
-        with open(HISTORY_FILE, "w", encoding="utf-8") as file:
-            json.dump(history, file, indent=4)
-
-    except OSError:
-        print("Could not save conversion history.")
 
 
 def record_conversion(original, source, converted, target):
@@ -123,26 +95,26 @@ def record_conversion(original, source, converted, target):
         "abbreviation": converted.strftime("%Z")
     })
 
-    save_history()
-
-
 def show_history():
     if not history:
-        print("No conversion history available.")
+        print("\nNo conversion history available.")
         return
 
-    print("\nCONVERSION HISTORY")
+    print("\n========== CONVERSION HISTORY ==========")
 
     for number, item in enumerate(history, start=1):
         print(f"\nConversion {number}")
 
         for key, value in item.items():
-            print(f"{key.replace('_', ' ').title()}: {value}")
+            label = key.replace("_", " ").title()
+            print(f"{label}: {value}")
+
+    print("\n========================================")
 
 
 def export_csv():
     if not history:
-        print("No history to export.")
+        print("\nNo history to export.")
         return
 
     fields = [
@@ -155,103 +127,123 @@ def export_csv():
     ]
 
     try:
-        with open(CSV_FILE, "w", newline="", encoding="utf-8") as file:
+        with open(
+            CSV_FILE,
+            "w",
+            newline="",
+            encoding="utf-8"
+        ) as file:
             writer = csv.DictWriter(file, fieldnames=fields)
             writer.writeheader()
             writer.writerows(history)
 
-        print(f"History exported successfully to {CSV_FILE}.")
+        print(f"\nHistory exported successfully to {CSV_FILE}.")
 
-    except OSError:
-        print("Could not export the history file.")
+    except OSError as error:
+        print(f"\nCould not export history: {error}")
 
 
-def get_source_datetime():
+def convert_one():
+    print("\n========== CONVERT TIME ==========")
+
     date_time = get_datetime()
-    source_tz = get_timezone("Enter the source time zone")
-    aware_time = get_aware_datetime(date_time, source_tz)
+    source = get_timezone("Enter the source time zone")
 
-    return aware_time, source_tz
+    original = get_aware_datetime(date_time, source)
 
+    target = get_timezone("Enter the target time zone")
 
-def display_conversion(original, source, converted, target):
-    print("\nCONVERSION RESULT")
-    print("-" * 40)
-    print("Original time:", original.strftime("%Y-%m-%d %H:%M %Z"))
-    print("Source time zone:", source.key)
-    print("Converted time:", converted.strftime("%Y-%m-%d %H:%M %Z"))
-    print("Target time zone:", target.key)
-    print("UTC offset:", converted.strftime("%z"))
-    print("Time zone abbreviation:", converted.strftime("%Z"))
+    converted = original.astimezone(target)
+
+    print("\n========== CONVERSION RESULT ==========")
+    print(f"Original time: {original.strftime('%Y-%m-%d %H:%M %Z')}")
+    print(f"Source zone: {source.key}")
+    print(f"Converted time: {converted.strftime('%Y-%m-%d %H:%M %Z')}")
+    print(f"Target zone: {target.key}")
+    print(f"UTC offset: {converted.strftime('%z')}")
+    print(f"Time-zone abbreviation: {converted.strftime('%Z')}")
 
     record_conversion(original, source, converted, target)
 
 
-def convert_one():
-    date_time, source_tz = get_source_datetime()
-    target_tz = get_timezone("Enter the target time zone")
-
-    converted_time = date_time.astimezone(target_tz)
-
-    display_conversion(date_time, source_tz, converted_time, target_tz)
-
-
 def convert_cities():
-    date_time, source_tz = get_source_datetime()
+    print("\n========== CONVERT TO MULTIPLE CITIES ==========")
+
+    date_time = get_datetime()
+    source = get_timezone("Enter the source time zone")
+
+    original = get_aware_datetime(date_time, source)
+
+    print(
+        "\nEnter the target time zones separated by commas."
+    )
+    print("Example: Europe/London, Asia/Tokyo, America/New_York")
 
     while True:
-        names = input(
-            "Enter target time zones separated by commas "
-            "(e.g. Europe/London, Asia/Tokyo, America/New_York): "
-        ).strip()
+        zone_names = input("Target time zones: ").strip()
 
-        city_names = [name.strip() for name in names.split(",") if name.strip()]
+        if zone_names:
+            names = [
+                name.strip()
+                for name in zone_names.split(",")
+                if name.strip()
+            ]
 
-        if not city_names:
-            print("Please enter at least one target time zone.")
-            continue
+            if names:
+                break
 
-        targets = []
-        invalid_names = []
+        print("Please enter at least one time-zone name.")
 
-        for name in city_names:
-            try:
-                targets.append(ZoneInfo(name))
+    targets = []
+    invalid_names = []
 
-            except (ZoneInfoNotFoundError, ValueError):
-                invalid_names.append(name)
+    for name in names:
+        try:
+            target = ZoneInfo(name)
 
-        if invalid_names:
-            print("Invalid time zones:", ", ".join(invalid_names))
-            print("Please enter the target time zones again.")
-            continue
+            if target.key not in [item.key for item in targets]:
+                targets.append(target)
 
-        break
+        except (ZoneInfoNotFoundError, ValueError):
+            invalid_names.append(name)
 
-    print("\nTIME IN DIFFERENT CITIES")
-    print("-" * 40)
+    for name in invalid_names:
+        print(f"Invalid time-zone name: {name}")
 
-    for target_tz in targets:
-        converted_time = date_time.astimezone(target_tz)
+    if not targets:
+        print("No valid target time zones were entered.")
+        return
 
-        print(f"\nTime zone: {target_tz.key}")
-        print("Converted time:", converted_time.strftime("%Y-%m-%d %H:%M %Z"))
-        print("UTC offset:", converted_time.strftime("%z"))
-        print("Abbreviation:", converted_time.strftime("%Z"))
+    print("\n========== MULTIPLE CITY RESULTS ==========")
 
-        record_conversion(date_time, source_tz, converted_time, target_tz)
+    for target in targets:
+        converted = original.astimezone(target)
+
+        print(f"\nTarget zone: {target.key}")
+        print(
+            "Converted time: "
+            f"{converted.strftime('%Y-%m-%d %H:%M %Z')}"
+        )
+        print(f"UTC offset: {converted.strftime('%z')}")
+        print(f"Time-zone abbreviation: {converted.strftime('%Z')}")
+
+        record_conversion(original, source, converted, target)
 
 
 def main():
+    print("====================================")
+    print("       TIME ZONE CONVERTER")
+    print("====================================")
+
     while True:
-        print("\n===== TIME ZONE CONVERTER =====")
+        print("\nMain Menu")
         print("1. Convert time")
         print("2. View conversion history")
         print("3. Export history to CSV")
         print("4. Convert to several cities")
         print("5. Exit")
 
-        choice = input("Select an option (1-5): ").strip()
+        choice = input("Choose an option (1-5): ").strip()
 
         if choice == "1":
             convert_one()
@@ -266,26 +258,12 @@ def main():
             convert_cities()
 
         elif choice == "5":
-            print("Thank you for using the Time Zone Converter.")
+            print("\nThank you for using the Time Zone Converter!")
+            print("Goodbye!")
             break
 
         else:
-            print("Invalid selection. Please choose a number from 1 to 5.")
-            continue
-
-        if choice in ("1", "4"):
-            while True:
-                again = input(
-                    "\nWould you like to perform another conversion? (yes/no): "
-                ).strip().lower()
-
-                if again in ("yes", "y", "no", "n"):
-                    break
-
-                print("Please enter yes or no.")
-
-            if again in ("yes", "y"):
-                continue
+            print("Invalid choice. Please select an option from 1 to 5.")
 
 
 if __name__ == "__main__":
